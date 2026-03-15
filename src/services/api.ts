@@ -65,6 +65,7 @@ export const jobsApi = {
   get: (id: string) => apiClient.get(`/api/v1/jobs/${id}`),
   getResult: (id: string) => apiClient.get(`/api/v1/jobs/${id}/result`),
   cancel: (id: string) => apiClient.post(`/api/v1/jobs/${id}/cancel`),
+  retry: (id: string) => apiClient.post(`/api/v1/jobs/${id}/retry`),
 };
 
 export const apiKeysApi = {

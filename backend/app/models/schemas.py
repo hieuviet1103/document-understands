@@ -1,5 +1,5 @@
-from pydantic import BaseModel, Field, EmailStr
-from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, ConfigDict, Field, EmailStr
+from typing import Optional, List, Dict, Any, Union
 from datetime import datetime
 from enum import Enum
 
@@ -99,32 +99,35 @@ class DocumentResponse(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
     status: DocumentStatus
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime] = None
 
 
 class TemplateCreate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
     name: str
     description: str = ""
     output_format: OutputFormat
-    schema: Dict[str, Any]
+    template_schema: Dict[str, Any] = Field(alias="schema")
     is_public: bool = False
 
 
 class TemplateUpdate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
     name: Optional[str] = None
     description: Optional[str] = None
-    schema: Optional[Dict[str, Any]] = None
+    template_schema: Optional[Dict[str, Any]] = Field(default=None, alias="schema")
     is_public: Optional[bool] = None
 
 
 class TemplateResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
     id: str
     user_id: str
     organization_id: str
     name: str
     description: str
     output_format: OutputFormat
-    schema: Dict[str, Any]
+    template_schema: Dict[str, Any] = Field(alias="schema")
     is_public: bool
     created_at: datetime
     updated_at: datetime
@@ -144,25 +147,34 @@ class ProcessingJobResponse(BaseModel):
     document_id: str
     template_id: Optional[str] = None
     status: JobStatus
-    priority: int
-    custom_instructions: str
+    priority: Optional[int] = 0  # optional: table may not have column
+    custom_instructions: Optional[str] = ""
     error_message: Optional[str] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime] = None  # optional: table may not have column
 
 
 class ProcessingResultResponse(BaseModel):
     id: str
     job_id: str
-    output_format: OutputFormat
-    output_data: Optional[Dict[str, Any]] = None
+    output_format: OutputFormat  # DB may return as "format"
+    output_data: Optional[Union[Dict[str, Any], List[Any]]] = None  # JSON object or array
     output_text: Optional[str] = None
     output_file_url: Optional[str] = None
-    tokens_used: int
-    processing_time: int
+    tokens_used: int = 0  # optional in DB
+    processing_time: int = 0  # optional in DB
     created_at: datetime
+
+    @classmethod
+    def model_validate(cls, obj: Any, **kwargs):
+        if isinstance(obj, dict):
+            obj = dict(obj)
+            obj.setdefault("output_format", obj.get("format"))
+            obj.setdefault("tokens_used", 0)
+            obj.setdefault("processing_time", 0)
+        return super().model_validate(obj, **kwargs)
 
 
 class APIKeyCreate(BaseModel):

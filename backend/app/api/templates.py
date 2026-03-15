@@ -16,9 +16,12 @@ async def create_template(
     organization_id = current_user["profile"]["organization_id"]
     supabase = get_supabase_admin_client()
 
-    template_data = template.model_dump()
+    template_data = template.model_dump(by_alias=True)
     template_data["user_id"] = user_id
     template_data["organization_id"] = organization_id
+    # DB may have column "format" (NOT NULL) alongside or instead of "output_format"
+    if "output_format" in template_data and "format" not in template_data:
+        template_data["format"] = template_data["output_format"]
 
     response = supabase.table("output_templates").insert(template_data).execute()
 
@@ -51,7 +54,7 @@ async def get_template(
 
     response = supabase.table("output_templates").select("*").eq(
         "id", template_id
-    ).or_(f"organization_id.eq.{organization_id},is_public.eq.true").maybeSingle().execute()
+    ).or_(f"organization_id.eq.{organization_id},is_public.eq.true").maybe_single().execute()
 
     if not response.data:
         raise HTTPException(status_code=404, detail="Template not found")
@@ -70,12 +73,14 @@ async def update_template(
 
     existing = supabase.table("output_templates").select("*").eq(
         "id", template_id
-    ).eq("user_id", user_id).maybeSingle().execute()
+    ).eq("user_id", user_id).maybe_single().execute()
 
     if not existing.data:
         raise HTTPException(status_code=404, detail="Template not found")
 
-    update_data = template.model_dump(exclude_unset=True)
+    update_data = template.model_dump(exclude_unset=True, by_alias=True)
+    if "output_format" in update_data and "format" not in update_data:
+        update_data["format"] = update_data["output_format"]
 
     response = supabase.table("output_templates").update(update_data).eq(
         "id", template_id
@@ -94,7 +99,7 @@ async def delete_template(
 
     existing = supabase.table("output_templates").select("*").eq(
         "id", template_id
-    ).eq("user_id", user_id).maybeSingle().execute()
+    ).eq("user_id", user_id).maybe_single().execute()
 
     if not existing.data:
         raise HTTPException(status_code=404, detail="Template not found")

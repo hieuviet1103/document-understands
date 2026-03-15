@@ -10,6 +10,12 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_ROLE_KEY: str
 
     GEMINI_API_KEY: str
+    # Gemini model — gemini-2.0-flash is deprecated for new users; use gemini-2.5-flash or gemini-3-flash-preview
+    # Override in .env: GEMINI_MODEL=gemini-2.5-flash  or  gemini-3-flash-preview
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+    # Files API upload threshold in bytes (default 20 MB)
+    # Documents above this size are uploaded via Files API instead of inline bytes
+    GEMINI_FILES_THRESHOLD: int = 20 * 1024 * 1024
 
     REDIS_URL: str = "redis://localhost:6379/0"
 

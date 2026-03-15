@@ -3,6 +3,12 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { MainLayout } from './components/MainLayout';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { DocumentsPage } from './pages/DocumentsPage';
+import { TemplatesPage } from './pages/TemplatesPage';
+import { ProcessingPage } from './pages/ProcessingPage';
+import { ApiKeysPage } from './pages/ApiKeysPage';
+import { WebhooksPage } from './pages/WebhooksPage';
+import { SettingsPage } from './pages/SettingsPage';
 
 function App() {
   return (
@@ -18,12 +24,12 @@ function App() {
         }
       >
         <Route index element={<DashboardPage />} />
-        <Route path="documents" element={<div className="p-6"><h1 className="text-2xl font-bold">Documents Page - Coming Soon</h1></div>} />
-        <Route path="templates" element={<div className="p-6"><h1 className="text-2xl font-bold">Templates Page - Coming Soon</h1></div>} />
-        <Route path="processing" element={<div className="p-6"><h1 className="text-2xl font-bold">Processing Page - Coming Soon</h1></div>} />
-        <Route path="api-keys" element={<div className="p-6"><h1 className="text-2xl font-bold">API Keys Page - Coming Soon</h1></div>} />
-        <Route path="webhooks" element={<div className="p-6"><h1 className="text-2xl font-bold">Webhooks Page - Coming Soon</h1></div>} />
-        <Route path="settings" element={<div className="p-6"><h1 className="text-2xl font-bold">Settings Page - Coming Soon</h1></div>} />
+        <Route path="documents" element={<DocumentsPage />} />
+        <Route path="templates" element={<TemplatesPage />} />
+        <Route path="processing" element={<ProcessingPage />} />
+        <Route path="api-keys" element={<ApiKeysPage />} />
+        <Route path="webhooks" element={<WebhooksPage />} />
+        <Route path="settings" element={<SettingsPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

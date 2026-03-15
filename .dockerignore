@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+.npm/
+
+# Build output
+dist/
+dist-ssr/
+
+# Dev files
+.env
+.env.local
+.env.*.local
+*.log
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose*.yml
+Dockerfile
+.dockerignore
+
+# Backend (not needed for frontend build context)
+backend/
+nginx/
+supabase/
+
+# Misc
+README.md
+*.md

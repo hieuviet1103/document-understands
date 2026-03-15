@@ -1,26 +1,31 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '../contexts/AuthContext';
 import { documentsApi, jobsApi, templatesApi } from '../services/api';
 import { FileText, Clock, CheckCircle, Layers, Upload, FileSearch } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export const DashboardPage: React.FC = () => {
   const { t } = useTranslation();
+  const { session } = useAuth();
 
   const { data: documents } = useQuery({
-    queryKey: ['documents'],
+    queryKey: ['documents', session?.access_token],
     queryFn: () => documentsApi.list(10, 0),
+    enabled: !!session?.access_token,
   });
 
   const { data: jobs } = useQuery({
-    queryKey: ['jobs'],
+    queryKey: ['jobs', session?.access_token],
     queryFn: () => jobsApi.list(undefined, 10, 0),
+    enabled: !!session?.access_token,
   });
 
   const { data: templates } = useQuery({
-    queryKey: ['templates'],
+    queryKey: ['templates', session?.access_token],
     queryFn: () => templatesApi.list(10, 0),
+    enabled: !!session?.access_token,
   });
 
   const stats = [

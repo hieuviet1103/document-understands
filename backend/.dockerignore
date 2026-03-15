@@ -1,0 +1,30 @@
+# Virtual environments
+venv/
+.venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Tests & coverage
+.pytest_cache/
+htmlcov/
+.coverage
+*.coveragerc
+
+# Dev files
+.env
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docs
+*.md
+README*

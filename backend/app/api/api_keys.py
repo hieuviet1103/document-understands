@@ -63,7 +63,7 @@ async def delete_api_key(
 
     existing = supabase.table("api_keys").select("*").eq(
         "id", key_id
-    ).eq("organization_id", organization_id).maybeSingle().execute()
+    ).eq("organization_id", organization_id).maybe_single().execute()
 
     if not existing.data:
         raise HTTPException(status_code=404, detail="API key not found")

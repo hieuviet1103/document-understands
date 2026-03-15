@@ -49,6 +49,10 @@ async def process_document_external(
         "metadata": metadata,
         "status": "uploaded"
     }
+    if "file_path" not in document_data:
+        document_data["file_path"] = storage_path
+    if "mime_type" not in document_data:
+        document_data["mime_type"] = file.content_type
 
     doc_response = supabase.table("documents").insert(document_data).execute()
     document = doc_response.data[0]
@@ -80,7 +84,7 @@ async def get_job_status_external(
 
     response = supabase.table("processing_jobs").select("*").eq(
         "id", job_id
-    ).eq("organization_id", organization_id).maybeSingle().execute()
+    ).eq("organization_id", organization_id).maybe_single().execute()
 
     if not response.data:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -98,7 +102,7 @@ async def get_job_result_external(
 
     job_response = supabase.table("processing_jobs").select("*").eq(
         "id", job_id
-    ).eq("organization_id", organization_id).maybeSingle().execute()
+    ).eq("organization_id", organization_id).maybe_single().execute()
 
     if not job_response.data:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -113,7 +117,7 @@ async def get_job_result_external(
 
     result_response = supabase.table("processing_results").select("*").eq(
         "job_id", job_id
-    ).maybeSingle().execute()
+    ).maybe_single().execute()
 
     if not result_response.data:
         raise HTTPException(status_code=404, detail="Result not available")

@@ -51,6 +51,8 @@ redis-server
 celery -A app.services.processing.celery_app worker --loglevel=info
 ```
 
+On **Windows**, the app automatically uses the `solo` pool to avoid multiprocessing errors. To override: `celery -A app.services.processing.celery_app worker --loglevel=info --pool=solo`
+
 ### 5. Run API Server
 
 ```bash

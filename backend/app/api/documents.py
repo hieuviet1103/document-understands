@@ -40,6 +40,12 @@ async def upload_document(
         "metadata": metadata,
         "status": "uploaded"
     }
+    # DB may have column "file_path" (NOT NULL) alongside or instead of "storage_path"
+    if "file_path" not in document_data:
+        document_data["file_path"] = storage_path
+    # DB may have column "mime_type" (NOT NULL) alongside or instead of "file_type"
+    if "mime_type" not in document_data:
+        document_data["mime_type"] = file.content_type
 
     response = supabase.table("documents").insert(document_data).execute()
 
@@ -72,7 +78,7 @@ async def get_document(
 
     response = supabase.table("documents").select("*").eq(
         "id", document_id
-    ).eq("organization_id", organization_id).maybeSingle().execute()
+    ).eq("organization_id", organization_id).maybe_single().execute()
 
     if not response.data:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -90,14 +96,14 @@ async def delete_document(
 
     document_response = supabase.table("documents").select("*").eq(
         "id", document_id
-    ).eq("user_id", user_id).maybeSingle().execute()
+    ).eq("user_id", user_id).maybe_single().execute()
 
     if not document_response.data:
         raise HTTPException(status_code=404, detail="Document not found")
 
     document = document_response.data
 
-    await storage_service.delete_file(document["storage_path"])
+    await storage_service.delete_file(document.get("storage_path") or document.get("file_path"))
 
     supabase.table("documents").delete().eq("id", document_id).execute()
 

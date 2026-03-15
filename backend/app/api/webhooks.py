@@ -57,7 +57,7 @@ async def get_webhook(
 
     response = supabase.table("webhooks").select("*").eq(
         "id", webhook_id
-    ).eq("organization_id", organization_id).maybeSingle().execute()
+    ).eq("organization_id", organization_id).maybe_single().execute()
 
     if not response.data:
         raise HTTPException(status_code=404, detail="Webhook not found")
@@ -76,7 +76,7 @@ async def update_webhook(
 
     existing = supabase.table("webhooks").select("*").eq(
         "id", webhook_id
-    ).eq("user_id", user_id).maybeSingle().execute()
+    ).eq("user_id", user_id).maybe_single().execute()
 
     if not existing.data:
         raise HTTPException(status_code=404, detail="Webhook not found")
@@ -100,7 +100,7 @@ async def delete_webhook(
 
     existing = supabase.table("webhooks").select("*").eq(
         "id", webhook_id
-    ).eq("user_id", user_id).maybeSingle().execute()
+    ).eq("user_id", user_id).maybe_single().execute()
 
     if not existing.data:
         raise HTTPException(status_code=404, detail="Webhook not found")
@@ -122,7 +122,7 @@ async def list_webhook_deliveries(
 
     webhook_response = supabase.table("webhooks").select("*").eq(
         "id", webhook_id
-    ).eq("organization_id", organization_id).maybeSingle().execute()
+    ).eq("organization_id", organization_id).maybe_single().execute()
 
     if not webhook_response.data:
         raise HTTPException(status_code=404, detail="Webhook not found")
