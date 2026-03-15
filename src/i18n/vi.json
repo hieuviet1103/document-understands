@@ -116,6 +116,7 @@
     "viewResult": "Xem kết quả",
     "cancelJob": "Hủy công việc",
     "retry": "Thử lại",
+    "runAgain": "Chạy lại",
     "retrySuccess": "Đã đưa công việc vào hàng đợi xử lý lại",
     "cancelConfirm": "Bạn có chắc chắn muốn hủy công việc này?",
     "createSuccess": "Tạo công việc xử lý thành công",

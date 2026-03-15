@@ -286,6 +286,7 @@ class GeminiService:
         if schema and schema.get("fields"):
             fields: List[Dict] = schema["fields"]
             field_lines = self._describe_fields(fields)
+            keys_hint = self._exact_keys_hint(fields)
             prompt = (
                 base
                 + "Extract the following fields from the document and return them as "
@@ -294,8 +295,12 @@ class GeminiService:
                 + field_lines
                 + "\n\nRules:\n"
                 + "- Return ONLY the JSON object (no markdown fences, no commentary)\n"
-                + "- Use null for fields that cannot be found\n"
-                + "- Match the exact field names at every level\n"
+                + "- The response must be a single JSON object with the top-level keys as listed above (e.g. \"users\"), not a bare array\n"
+            )
+            if keys_hint:
+                prompt += f"- Use exactly these property names in the output: {keys_hint}\n"
+            prompt += (
+                "- Use null for fields that cannot be found\n"
                 + "- Preserve nesting: objects with child fields, arrays of objects with their fields\n"
                 + "- Ensure correct data types (string / number / integer / boolean / array / object)\n"
             )
@@ -386,6 +391,26 @@ class GeminiService:
     # ──────────────────────────────────────────────────────────────────────────
     # Helpers
     # ──────────────────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _exact_keys_hint(fields: List[Dict]) -> str:
+        """Build a one-line hint of exact key names for the prompt."""
+        root_keys = [f.get("name", "") for f in fields if f.get("name")]
+        if not root_keys:
+            return ""
+        parts = [f"Root object must have key(s): {', '.join(repr(k) for k in root_keys)}"]
+        for f in fields:
+            if f.get("type") == "array" and isinstance(f.get("items"), dict):
+                items = f.get("items", {})
+                children = items.get("children") or items.get("properties")
+                if isinstance(children, list):
+                    child_names = [c.get("name", "") for c in children if c.get("name")]
+                    if child_names:
+                        parts.append(
+                            f"each element of {f.get('name')!r} must have key(s): "
+                            + ", ".join(repr(n) for n in child_names)
+                        )
+        return " ".join(parts) + "."
 
     @staticmethod
     def _describe_fields(fields: List[Dict], indent: str = "  ") -> str:

@@ -1,18 +1,23 @@
-from celery import Celery
-from postgrest.exceptions import APIError as PostgrestAPIError
-from app.core.config import settings
-from app.core.supabase import get_supabase_admin_client
-from app.services.gemini import gemini_service
-from app.services.storage import storage_service
-from app.services.output_formatter import output_formatter
-from typing import Dict, Any
-import httpx
 import hashlib
 import hmac
 import json
+import logging
 import re
 import sys
 from datetime import datetime, timezone
+from typing import Dict, Any
+
+import httpx
+from celery import Celery
+from postgrest.exceptions import APIError as PostgrestAPIError
+
+from app.core.config import settings
+from app.core.supabase import get_supabase_admin_client
+from app.services.gemini import gemini_service
+from app.services.output_formatter import output_formatter
+from app.services.storage import storage_service
+
+logger = logging.getLogger(__name__)
 
 
 celery_app = Celery(
@@ -39,6 +44,7 @@ if sys.platform == "win32":
 
 @celery_app.task(bind=True, max_retries=3)
 def process_document_task(self, job_id: str):
+    logger.info("[processing] job_id=%s task_started", job_id)
     supabase = get_supabase_admin_client()
 
     try:
@@ -47,43 +53,71 @@ def process_document_task(self, job_id: str):
         ).eq("id", job_id).maybe_single().execute()
 
         if not job_response.data:
+            logger.error("[processing] job_id=%s job_not_found", job_id)
             raise Exception("Job not found")
 
         job = job_response.data
         document = job["documents"]
         template = job.get("output_templates")
+        doc_id = document.get("id") if document else None
+        template_id = template.get("id") if template else None
+        logger.info(
+            "[processing] job_id=%s job_loaded document_id=%s template_id=%s",
+            job_id, doc_id, template_id
+        )
 
         supabase.table("processing_jobs").update({
             "status": "processing",
             "started_at": datetime.now(timezone.utc).isoformat()
         }).eq("id", job_id).execute()
+        logger.info("[processing] job_id=%s status=processing", job_id)
 
+        storage_path = document.get("storage_path") or document.get("file_path")
         file_url = storage_service.supabase.storage.from_(
             settings.STORAGE_BUCKET_NAME
-        ).create_signed_url(document.get("storage_path") or document.get("file_path"), 3600)
+        ).create_signed_url(storage_path, 3600)
 
         response = httpx.get(file_url["signedURL"])
+        response.raise_for_status()
         file_content = response.content
+        logger.info(
+            "[processing] job_id=%s file_downloaded size=%s bytes",
+            job_id, len(file_content)
+        )
 
         output_format = template["output_format"] if template else "json"
         schema = template["schema"] if template else None
         custom_instructions = job.get("custom_instructions", "")
+        file_name = document.get("filename", "document")
 
+        logger.info(
+            "[processing] job_id=%s calling_gemini output_format=%s file_name=%s",
+            job_id, output_format, file_name
+        )
+        logger.info("--------------------------------")
+        logger.info(f"schema: {schema}")
+        logger.info("--------------------------------")
         gemini_result = gemini_service.process_document(
             file_content=file_content,
             mime_type=document.get("file_type") or document.get("mime_type"),
             output_format=output_format,
             schema=schema,
             custom_instructions=custom_instructions,
-            file_name=document.get("filename", "document"),
+            file_name=file_name,
         )
 
         if not gemini_result["success"]:
-            raise Exception(gemini_result.get("error", "Processing failed"))
+            err = gemini_result.get("error", "Processing failed")
+            logger.error("[processing] job_id=%s gemini_failed error=%s", job_id, err)
+            raise Exception(err)
 
         output_data = gemini_result["output"]
         tokens_used = gemini_result["tokens_used"]
         model_used = gemini_result.get("model", "gemini-2.5-flash")
+        logger.info(
+            "[processing] job_id=%s gemini_done tokens_used=%s model=%s",
+            job_id, tokens_used, model_used
+        )
 
         created = datetime.fromisoformat(job["created_at"].replace("Z", "+00:00"))
         if created.tzinfo is None:
@@ -107,6 +141,7 @@ def process_document_task(self, job_id: str):
         elif output_format == "json":
             result_data["output_data"] = output_data
         elif output_format == "excel":
+            logger.info("[processing] job_id=%s generating_excel", job_id)
             excel_url = output_formatter.generate_excel(
                 data=output_data,
                 columns=schema.get("columns", []) if schema else [],
@@ -114,13 +149,19 @@ def process_document_task(self, job_id: str):
             )
             result_data["output_file_url"] = excel_url
             result_data["output_data"] = output_data
+            logger.info("[processing] job_id=%s excel_done url=%s", job_id, excel_url)
 
+        logger.info("[processing] job_id=%s inserting_result", job_id)
         result_response = _insert_processing_result(supabase, result_data, output_format, output_data)
 
         supabase.table("processing_jobs").update({
             "status": "completed",
             "completed_at": datetime.now(timezone.utc).isoformat()
         }).eq("id", job_id).execute()
+        logger.info(
+            "[processing] job_id=%s completed result_id=%s",
+            job_id, result_response.data[0]["id"]
+        )
 
         _trigger_webhooks(job_id, "job.completed", result_response.data[0])
 
@@ -132,9 +173,16 @@ def process_document_task(self, job_id: str):
 
     except Exception as e:
         error_message = str(e)
+        retries = getattr(self.request, "retries", 0)
+        logger.exception(
+            "[processing] job_id=%s error step=failed exception=%s retries=%s",
+            job_id, type(e).__name__, retries
+        )
+        logger.error("[processing] job_id=%s error_message=%s", job_id, error_message)
+
         # Gemini 429: retry with API-suggested delay; only mark failed when out of retries
         is_429 = False
-        countdown = 60 * (self.request.retries + 1)
+        countdown = 60 * (retries + 1)
         try:
             from google.genai import errors as genai_errors
             if isinstance(e, genai_errors.ClientError) and getattr(e, "code", None) == 429:
@@ -155,16 +203,21 @@ def process_document_task(self, job_id: str):
                     m = re.search(r"retry in (\d+(?:\.\d+)?)\s*s", msg, re.I)
                     if m:
                         countdown = min(300, max(45, int(float(m.group(1)))))
+                logger.warning(
+                    "[processing] job_id=%s rate_limit_429 retry_in=%ss attempt=%s",
+                    job_id, countdown, retries + 1
+                )
         except Exception:
             pass
 
-        if is_429 and self.request.retries < self.max_retries:
+        if is_429 and retries < self.max_retries:
             # Do not mark job failed; keep processing and retry
             supabase.table("processing_jobs").update({
                 "error_message": f"Rate limit exceeded. Retrying in {countdown}s…"
             }).eq("id", job_id).execute()
             raise self.retry(exc=e, countdown=countdown)
 
+        logger.error("[processing] job_id=%s marking_failed", job_id)
         supabase.table("processing_jobs").update({
             "status": "failed",
             "error_message": _user_friendly_error(error_message, is_429),
@@ -173,20 +226,28 @@ def process_document_task(self, job_id: str):
 
         _trigger_webhooks(job_id, "job.failed", {"error": error_message})
 
-        if self.request.retries < self.max_retries:
+        if retries < self.max_retries:
+            logger.info("[processing] job_id=%s retrying countdown=%s", job_id, countdown)
             raise self.retry(exc=e, countdown=countdown)
 
 
 def _insert_processing_result(supabase, result_data: Dict[str, Any], output_format: str, output_data: Any):
     """Insert into processing_results; on PGRST204 (missing column), omit that column and retry."""
+    job_id = result_data.get("job_id", "")
     data = dict(result_data)
     attempt = 0
     max_attempts = 5
     while attempt < max_attempts:
         try:
-            return supabase.table("processing_results").insert(data).execute()
+            out = supabase.table("processing_results").insert(data).execute()
+            logger.info("[processing] job_id=%s insert_result ok attempt=%s", job_id, attempt + 1)
+            return out
         except PostgrestAPIError as e:
             if getattr(e, "code", None) != "PGRST204":
+                logger.exception(
+                    "[processing] job_id=%s insert_result postgrest_error code=%s",
+                    job_id, getattr(e, "code", None)
+                )
                 raise
             msg = (e.message or "") or ""
             m = re.search(r"Could not find the ['\"]?(\w+)['\"]? column", msg, re.I)
@@ -198,8 +259,14 @@ def _insert_processing_result(supabase, result_data: Dict[str, Any], output_form
                 data["output_text"] = json.dumps(output_data, ensure_ascii=False)
             # Never remove job_id (required to find result); processing_job_id is optional alias
             if bad_col == "job_id":
+                logger.error("[processing] job_id=%s insert_result cannot_remove_job_id", job_id)
                 raise
             attempt += 1
+            logger.warning(
+                "[processing] job_id=%s insert_result column_missing dropped=%s attempt=%s",
+                job_id, bad_col, attempt
+            )
+    logger.error("[processing] job_id=%s insert_result max_attempts_exceeded", job_id)
     raise RuntimeError("Could not insert processing_result: missing columns in schema")
 
 
@@ -232,9 +299,14 @@ def _trigger_webhooks(job_id: str, event_type: str, payload: Dict[str, Any]):
         for webhook in webhooks_response.data:
             if event_type in webhook["events"]:
                 _deliver_webhook(webhook, job_id, event_type, payload)
+        if webhooks_response.data:
+            logger.debug(
+                "[processing] job_id=%s webhooks_triggered event=%s count=%s",
+                job_id, event_type, len([w for w in webhooks_response.data if event_type in w["events"]])
+            )
 
     except Exception as e:
-        print(f"Webhook trigger error: {str(e)}")
+        logger.warning("[processing] job_id=%s webhook_trigger_error error=%s", job_id, str(e))
 
 
 def _deliver_webhook(webhook: Dict[str, Any], job_id: str, event_type: str, payload: Dict[str, Any]):
@@ -358,7 +430,7 @@ class ProcessingService:
         return True
 
     def retry_job(self, job_id: str, user_id: str) -> Dict[str, Any] | None:
-        """Re-queue a failed or cancelled job. Returns updated job or None if not allowed."""
+        """Re-queue a failed/cancelled job, or clone a new job from a completed one. Returns job or None."""
         job_response = self.supabase.table("processing_jobs").select("*").eq(
             "id", job_id
         ).eq("user_id", user_id).maybe_single().execute()
@@ -367,26 +439,50 @@ class ProcessingService:
             return None
 
         job = job_response.data
-        if job["status"] not in ("failed", "cancelled"):
-            return None
+        status = job.get("status")
 
-        update_data = {
-            "status": "pending",
-            "error_message": None,
-            "started_at": None,
-            "completed_at": None,
-        }
-        self.supabase.table("processing_jobs").update(update_data).eq(
-            "id", job_id
-        ).execute()
+        if status in ("failed", "cancelled"):
+            # Re-use same job: reset and re-queue
+            update_data = {
+                "status": "pending",
+                "error_message": None,
+                "started_at": None,
+                "completed_at": None,
+            }
+            self.supabase.table("processing_jobs").update(update_data).eq(
+                "id", job_id
+            ).execute()
+            priority = job.get("priority", 0) or 0
+            process_document_task.apply_async(args=[job_id], priority=priority)
+            updated = self.supabase.table("processing_jobs").select("*").eq(
+                "id", job_id
+            ).maybe_single().execute()
+            return updated.data
 
-        priority = job.get("priority", 0) or 0
-        process_document_task.apply_async(args=[job_id], priority=priority)
+        if status == "completed":
+            # Clone: create a new job with same document, template, instructions
+            org_id = job.get("organization_id")
+            doc_id = job.get("document_id")
+            template_id = job.get("template_id")
+            instructions = job.get("custom_instructions") or ""
+            priority = job.get("priority", 0) or 0
+            if not doc_id:
+                return None
+            new_job = self.create_job(
+                user_id=user_id,
+                organization_id=org_id,
+                document_id=doc_id,
+                template_id=template_id,
+                custom_instructions=instructions,
+                priority=priority,
+            )
+            logger.info(
+                "[processing] job_id=%s clone_completed new_job_id=%s",
+                job_id, new_job["id"]
+            )
+            return new_job
 
-        updated = self.supabase.table("processing_jobs").select("*").eq(
-            "id", job_id
-        ).maybe_single().execute()
-        return updated.data
+        return None
 
 
 processing_service = ProcessingService()

@@ -469,14 +469,15 @@ export const ProcessingPage: React.FC = () => {
                             {t('processing.cancelJob')}
                           </button>
                         )}
-                        {(job.status === 'failed' || job.status === 'cancelled') && (
+                        {(job.status === 'failed' || job.status === 'cancelled' || job.status === 'completed') && (
                           <button
                             onClick={() => retryMutation.mutate(job.id)}
                             disabled={retryMutation.isPending}
                             className="flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50"
+                            title={job.status === 'completed' ? t('processing.runAgain') : t('processing.retry')}
                           >
                             <RotateCw className="w-3.5 h-3.5" />
-                            {t('processing.retry')}
+                            {job.status === 'completed' ? t('processing.runAgain') : t('processing.retry')}
                           </button>
                         )}
                       </div>

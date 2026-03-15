@@ -116,6 +116,7 @@
     "viewResult": "View Result",
     "cancelJob": "Cancel Job",
     "retry": "Retry",
+    "runAgain": "Run again",
     "retrySuccess": "Job queued for retry",
     "cancelConfirm": "Are you sure you want to cancel this job?",
     "createSuccess": "Processing job created successfully",

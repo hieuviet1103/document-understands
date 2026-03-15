@@ -153,6 +153,6 @@ async def retry_job(
     if not job:
         raise HTTPException(
             status_code=400,
-            detail="Job not found or cannot be retried (only failed/cancelled jobs)"
+            detail="Job not found or cannot be retried (allowed: failed, cancelled, or completed)"
         )
     return job
