@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { webhooksApi } from '../services/api';
+import { webhooksApi, templatesApi } from '../services/api';
 import {
   Webhook,
   Plus,
@@ -27,6 +27,13 @@ const CreateWebhookModal: React.FC<{
   const { t } = useTranslation();
   const [url, setUrl] = useState(webhook?.url || '');
   const [events, setEvents] = useState<string[]>(webhook?.events || ['job.completed']);
+  const [templateId, setTemplateId] = useState<string>(webhook?.template_id ?? '');
+
+  const { data: templatesData } = useQuery({
+    queryKey: ['templates-webhooks'],
+    queryFn: () => templatesApi.list(100, 0),
+  });
+  const templates = templatesData?.data ?? [];
 
   const availableEvents = ['job.completed', 'job.failed'];
 
@@ -37,7 +44,7 @@ const CreateWebhookModal: React.FC<{
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave({ url, events });
+    onSave({ url, events, template_id: templateId || null });
   };
 
   return (
@@ -63,6 +70,21 @@ const CreateWebhookModal: React.FC<{
               className="w-full border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
               placeholder="https://your-server.com/webhook"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">{t('webhooks.template')}</label>
+            <select
+              value={templateId}
+              onChange={(e) => setTemplateId(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+              title={t('webhooks.template')}
+            >
+              <option value="">{t('webhooks.templateOptional')}</option>
+              {templates.map((tpl: any) => (
+                <option key={tpl.id} value={tpl.id}>{tpl.name}</option>
+              ))}
+            </select>
           </div>
 
           <div>
@@ -201,6 +223,16 @@ export const WebhooksPage: React.FC = () => {
     queryKey: ['webhooks'],
     queryFn: () => webhooksApi.list(),
   });
+  const { data: templatesData } = useQuery({
+    queryKey: ['templates-webhooks-list'],
+    queryFn: () => templatesApi.list(100, 0),
+  });
+  const templates = templatesData?.data ?? [];
+  const getTemplateName = (id: string | null) => {
+    if (!id) return t('webhooks.templateOptional');
+    const tpl = templates.find((t: any) => t.id === id);
+    return tpl?.name ?? id;
+  };
 
   const createMutation = useMutation({
     mutationFn: (data: any) => webhooksApi.create(data),
@@ -296,6 +328,9 @@ export const WebhooksPage: React.FC = () => {
                           {event}
                         </span>
                       ))}
+                      <span className="text-xs text-slate-500" title={t('webhooks.template')}>
+                        {t('webhooks.template')}: {getTemplateName(wh.template_id ?? null)}
+                      </span>
                       <span className="text-xs text-slate-400">
                         Created {new Date(wh.created_at).toLocaleDateString()}
                       </span>

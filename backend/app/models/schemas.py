@@ -210,12 +210,14 @@ class APIKeyCreateResponse(BaseModel):
 class WebhookCreate(BaseModel):
     url: str
     events: List[str]
+    template_id: Optional[str] = None
 
 
 class WebhookUpdate(BaseModel):
     url: Optional[str] = None
     events: Optional[List[str]] = None
     is_active: Optional[bool] = None
+    template_id: Optional[str] = None
 
 
 class WebhookResponse(BaseModel):
@@ -227,7 +229,8 @@ class WebhookResponse(BaseModel):
     secret: str
     is_active: bool
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime] = None
+    template_id: Optional[str] = None
 
 
 class WebhookDeliveryResponse(BaseModel):

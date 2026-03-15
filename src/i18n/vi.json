@@ -160,6 +160,8 @@
     "title": "Webhooks",
     "createWebhook": "Tạo Webhook",
     "webhookUrl": "URL Webhook",
+    "template": "Template",
+    "templateOptional": "Tất cả template (mặc định)",
     "events": "Sự kiện",
     "event": {
       "jobCompleted": "Công việc hoàn thành",

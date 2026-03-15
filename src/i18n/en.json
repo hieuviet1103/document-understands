@@ -160,6 +160,8 @@
     "title": "Webhooks",
     "createWebhook": "Create Webhook",
     "webhookUrl": "Webhook URL",
+    "template": "Template",
+    "templateOptional": "All templates (default)",
     "events": "Events",
     "event": {
       "jobCompleted": "Job Completed",

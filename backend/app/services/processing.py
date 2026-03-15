@@ -284,21 +284,27 @@ def _trigger_webhooks(job_id: str, event_type: str, payload: Dict[str, Any]):
 
     try:
         job_response = supabase.table("processing_jobs").select(
-            "organization_id, user_id"
+            "organization_id, user_id, template_id"
         ).eq("id", job_id).maybe_single().execute()
 
         if not job_response.data:
             return
 
         job = job_response.data
+        job_template_id = job.get("template_id")
 
         webhooks_response = supabase.table("webhooks").select("*").eq(
             "organization_id", job["organization_id"]
         ).eq("is_active", True).execute()
 
         for webhook in webhooks_response.data:
-            if event_type in webhook["events"]:
-                _deliver_webhook(webhook, job_id, event_type, payload)
+            if event_type not in webhook["events"]:
+                continue
+            # If webhook is tied to a template, only trigger for jobs using that template
+            wh_template_id = webhook.get("template_id")
+            if wh_template_id is not None and wh_template_id != job_template_id:
+                continue
+            _deliver_webhook(webhook, job_id, event_type, payload)
         if webhooks_response.data:
             logger.debug(
                 "[processing] job_id=%s webhooks_triggered event=%s count=%s",

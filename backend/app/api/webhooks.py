@@ -25,12 +25,17 @@ async def create_webhook(
         "url": webhook.url,
         "events": webhook.events,
         "secret": secret,
-        "is_active": True
+        "is_active": True,
     }
+    if webhook.template_id is not None:
+        webhook_data["template_id"] = webhook.template_id
 
     response = supabase.table("webhooks").insert(webhook_data).execute()
-
-    return response.data[0]
+    row = response.data[0]
+    # Ensure updated_at for response (DB may not return it if column missing)
+    if row.get("updated_at") is None and row.get("created_at"):
+        row = {**row, "updated_at": row["created_at"]}
+    return row
 
 
 @router.get("", response_model=List[WebhookResponse])
