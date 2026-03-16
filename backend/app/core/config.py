@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     # Files API upload threshold in bytes (default 20 MB)
     # Documents above this size are uploaded via Files API instead of inline bytes
     GEMINI_FILES_THRESHOLD: int = 20 * 1024 * 1024
+    # Max tokens for model response (default 16384; increase if long JSON is truncated)
+    GEMINI_MAX_OUTPUT_TOKENS: int = 16384
 
     REDIS_URL: str = "redis://localhost:6379/0"
 

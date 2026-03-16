@@ -245,7 +245,7 @@ class GeminiService:
             prompt_text = base + "Extract all relevant information from the document."
             gen_config = types.GenerateContentConfig(
                 temperature=0.1,
-                max_output_tokens=8192,
+                max_output_tokens=settings.GEMINI_MAX_OUTPUT_TOKENS,
             )
 
         return types.Part.from_text(text=prompt_text), gen_config
@@ -274,7 +274,7 @@ class GeminiService:
 
         config = types.GenerateContentConfig(
             temperature=0.2,
-            max_output_tokens=8192,
+            max_output_tokens=settings.GEMINI_MAX_OUTPUT_TOKENS,
         )
         return prompt, config
 
@@ -309,9 +309,10 @@ class GeminiService:
             # Deep copy + strip forbidden keys so the SDK never sees template-only fields.
             built = copy.deepcopy(self._build_response_schema(fields))
             response_json_schema = GeminiService._strip_forbidden_keys(built)
+            # Use 16k output tokens so long JSON (many array items / nested objects) is not cut off mid-string
             config = types.GenerateContentConfig(
                 temperature=0.0,
-                max_output_tokens=8192,
+                max_output_tokens=settings.GEMINI_MAX_OUTPUT_TOKENS,
                 response_mime_type="application/json",
                 response_json_schema=response_json_schema,
             )
@@ -325,7 +326,7 @@ class GeminiService:
             )
             config = types.GenerateContentConfig(
                 temperature=0.0,
-                max_output_tokens=8192,
+                max_output_tokens=settings.GEMINI_MAX_OUTPUT_TOKENS,
                 response_mime_type="application/json",
             )
 
@@ -368,7 +369,7 @@ class GeminiService:
             }
             config = types.GenerateContentConfig(
                 temperature=0.0,
-                max_output_tokens=8192,
+                max_output_tokens=settings.GEMINI_MAX_OUTPUT_TOKENS,
                 response_mime_type="application/json",
                 response_schema=response_schema,
             )
@@ -382,7 +383,7 @@ class GeminiService:
             )
             config = types.GenerateContentConfig(
                 temperature=0.0,
-                max_output_tokens=8192,
+                max_output_tokens=settings.GEMINI_MAX_OUTPUT_TOKENS,
                 response_mime_type="application/json",
             )
 
@@ -519,6 +520,47 @@ class GeminiService:
         return GeminiService._sanitize_json_schema(root)
 
     @staticmethod
+    def _try_repair_truncated_json(text: str, exc: json.JSONDecodeError) -> Any | None:
+        """Attempt to repair truncated JSON (e.g. unterminated string) and re-parse. Returns None if repair fails."""
+        msg = str(exc).lower()
+        if "unterminated string" not in msg and "expecting value" not in msg:
+            return None
+        repaired = text.rstrip()
+        if not repaired.endswith('"') and not repaired.endswith("'"):
+            repaired += '"'
+        # Close brackets in reverse order of opening (inside strings we might have { [ so track properly)
+        stack: List[str] = []
+        i = 0
+        in_string = False
+        escape = False
+        quote = "\0"
+        while i < len(repaired):
+            c = repaired[i]
+            if in_string:
+                if escape:
+                    escape = False
+                elif c == "\\":
+                    escape = True
+                elif c == quote:
+                    in_string = False
+            elif c in ('"', "'"):
+                in_string = True
+                quote = c
+            elif c == "{":
+                stack.append("}")
+            elif c == "[":
+                stack.append("]")
+            elif c in ("}", "]"):
+                if stack and stack[-1] == c:
+                    stack.pop()
+            i += 1
+        repaired += "".join(reversed(stack))
+        try:
+            return json.loads(repaired)
+        except json.JSONDecodeError:
+            return None
+
+    @staticmethod
     def _parse_response(response_text: str, output_format: str) -> Any:
         """Strip markdown fences and parse JSON when required."""
         text = response_text.strip()
@@ -539,6 +581,9 @@ class GeminiService:
         try:
             return json.loads(text)
         except json.JSONDecodeError as exc:
+            repaired = GeminiService._try_repair_truncated_json(text, exc)
+            if repaired is not None:
+                return repaired
             logger.warning("JSON parse error: %s — returning raw text", exc)
             return {"raw_output": text, "parse_error": str(exc)}
 

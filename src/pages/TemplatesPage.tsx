@@ -14,6 +14,8 @@ import {
   CheckCircle,
   ChevronDown,
   ChevronUp,
+  FileJson,
+  Upload,
 } from 'lucide-react';
 
 type OutputFormat = 'text' | 'json' | 'excel';
@@ -40,6 +42,153 @@ const defaultSchema = (format: OutputFormat) => {
 const PRIMITIVE_TYPES = ['string', 'number', 'integer', 'boolean'] as const;
 const COMPLEX_TYPES = ['array', 'object'] as const;
 const ALL_FIELD_TYPES = [...PRIMITIVE_TYPES, ...COMPLEX_TYPES] as const;
+
+/** Humanize key to a readable description (e.g. invoice_number → Invoice number). */
+function humanizeKey(key: string): string {
+  if (!key) return '';
+  const withSpaces = key.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2');
+  return withSpaces.charAt(0).toUpperCase() + withSpaces.slice(1).toLowerCase();
+}
+
+/** Ensure every field has a non-empty description (mutates in place). */
+function ensureDescriptions(fields: JsonField[]): void {
+  for (const f of fields) {
+    if (typeof f.description !== 'string' || f.description.trim() === '') {
+      f.description = humanizeKey(f.name || 'field');
+    }
+    if (f.children?.length) ensureDescriptions(f.children);
+    if (f.items) {
+      if (typeof f.items.description !== 'string' || f.items.description.trim() === '') {
+        f.items.description = humanizeKey(f.items.name || 'item');
+      }
+      if (f.items.children?.length) ensureDescriptions(f.items.children);
+    }
+  }
+}
+
+/** Check if JSON is already our template schema format: { fields: [ { name, type, ... } ] }. */
+function isAlreadyTemplateSchema(json: unknown): json is { fields: unknown[] } {
+  if (json === null || typeof json !== 'object' || Array.isArray(json)) return false;
+  const obj = json as Record<string, unknown>;
+  const fields = obj.fields;
+  if (!Array.isArray(fields) || fields.length === 0) return false;
+  const first = fields[0];
+  return first !== null && typeof first === 'object' && 'name' in first && 'type' in first;
+}
+
+/** Normalize raw field from template-schema JSON into JsonField (keep description, children, items). */
+function normalizeTemplateField(raw: unknown): JsonField {
+  const validTypes: JsonField['type'][] = ['string', 'number', 'integer', 'boolean', 'object', 'array'];
+  const toType = (s: unknown): JsonField['type'] =>
+    (typeof s === 'string' && validTypes.includes(s as JsonField['type'])) ? (s as JsonField['type']) : 'string';
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { name: 'field', type: 'string', description: '' };
+  }
+  const r = raw as Record<string, unknown>;
+  const name = typeof r.name === 'string' ? r.name : 'field';
+  const type = toType(r.type);
+  const description = typeof r.description === 'string' ? r.description : humanizeKey(name);
+  const field: JsonField = { name, type, description: description || humanizeKey(name) };
+  if (Array.isArray(r.children) && r.children.length > 0) {
+    field.children = r.children.map((c: unknown) => normalizeTemplateField(c));
+  }
+  if (r.items !== null && r.items !== undefined && typeof r.items === 'object' && !Array.isArray(r.items)) {
+    field.items = normalizeTemplateField(r.items);
+  }
+  return field;
+}
+
+/** Infer template schema (fields) from a JSON object or array. Uses key name as description when not from JSON Schema. */
+function jsonToTemplateSchema(json: unknown): { fields: JsonField[] } {
+  if (isAlreadyTemplateSchema(json)) {
+    const fields = json.fields.map((f: unknown) => normalizeTemplateField(f));
+    ensureDescriptions(fields);
+    return { fields };
+  }
+  function inferType(value: unknown): JsonField['type'] {
+    if (value === null || value === undefined) return 'string';
+    if (typeof value === 'boolean') return 'boolean';
+    if (typeof value === 'number') return Number.isInteger(value) ? 'integer' : 'number';
+    if (typeof value === 'string') return 'string';
+    if (Array.isArray(value)) return 'array';
+    if (typeof value === 'object') return 'object';
+    return 'string';
+  }
+  function valueToField(name: string, value: unknown, descriptionOverride?: string): JsonField {
+    const type = inferType(value);
+    const description = (descriptionOverride && descriptionOverride.trim()) ? descriptionOverride : humanizeKey(name || 'field');
+    const field: JsonField = { name: name || 'field', type, description: description || humanizeKey(name || 'field') };
+    if (type === 'object' && value !== null && typeof value === 'object' && !Array.isArray(value)) {
+      const obj = value as Record<string, unknown>;
+      field.children = Object.keys(obj).map((k) => valueToField(k, obj[k]));
+    }
+    if (type === 'array' && Array.isArray(value)) {
+      const first = value[0];
+      field.items = first !== undefined && first !== null
+        ? valueToField('item', first)
+        : { name: 'item', type: 'string', description: humanizeKey('item') };
+    }
+    return field;
+  }
+  const validTypes: JsonField['type'][] = ['string', 'number', 'integer', 'boolean', 'object', 'array'];
+  function toFieldType(s: string): JsonField['type'] {
+    return validTypes.includes(s as JsonField['type']) ? (s as JsonField['type']) : 'string';
+  }
+  /** Convert JSON Schema (properties + type/description per prop) to our fields. */
+  function fromJsonSchema(schema: Record<string, unknown>): { fields: JsonField[] } | null {
+    const props = schema.properties as Record<string, unknown> | undefined;
+    if (!props || typeof props !== 'object') return null;
+    const fields: JsonField[] = [];
+    for (const [key, prop] of Object.entries(props)) {
+      if (typeof prop !== 'object' || prop === null) continue;
+      const p = prop as Record<string, unknown>;
+      const type = toFieldType((p.type as string) || 'string');
+      const desc = (typeof p.description === 'string' && p.description.trim()) ? p.description : humanizeKey(key);
+      const field: JsonField = { name: key, type, description: desc };
+      if (type === 'object' && p.properties) {
+        const child = fromJsonSchema(p as Record<string, unknown>);
+        field.children = child?.fields ?? [];
+      }
+      if (type === 'array' && p.items && typeof p.items === 'object') {
+        const itemSchema = p.items as Record<string, unknown>;
+        const itemType = toFieldType((itemSchema.type as string) || 'string');
+        const itemDesc = (typeof itemSchema.description === 'string' && itemSchema.description.trim())
+          ? itemSchema.description
+          : humanizeKey('item');
+        field.items = { name: 'item', type: itemType, description: itemDesc };
+        if (itemType === 'object' && itemSchema.properties) {
+          const child = fromJsonSchema(itemSchema);
+          if (field.items) (field.items as JsonField).children = child?.fields ?? [];
+        }
+      }
+      fields.push(field);
+    }
+    return { fields };
+  }
+  let result: { fields: JsonField[] };
+  if (json !== null && typeof json === 'object' && !Array.isArray(json)) {
+    const obj = json as Record<string, unknown>;
+    const fromSchema = fromJsonSchema(obj);
+    if (fromSchema?.fields.length) {
+      result = fromSchema;
+    } else {
+      result = { fields: Object.keys(obj).map((k) => valueToField(k, obj[k])) };
+    }
+  } else if (Array.isArray(json)) {
+    const item = json[0];
+    const itemsField = item !== undefined && item !== null
+      ? valueToField('item', item)
+      : { name: 'item', type: 'string', description: humanizeKey('item') };
+    result = { fields: [{ name: 'items', type: 'array', description: humanizeKey('items'), items: itemsField }] };
+  } else if (json !== null && typeof json === 'object') {
+    const obj = json as Record<string, unknown>;
+    result = { fields: Object.keys(obj).map((k) => valueToField(k, obj[k])) };
+  } else {
+    result = { fields: [valueToField('value', json)] };
+  }
+  ensureDescriptions(result.fields);
+  return result;
+}
 
 const JsonFieldEditor: React.FC<{
   field: JsonField;
@@ -90,7 +239,7 @@ const JsonFieldEditor: React.FC<{
           </select>
           <input
             placeholder={t('templates.fieldDescription') || 'Description'}
-            value={field.description}
+            value={typeof field.description === 'string' ? field.description : ''}
             onChange={(e) => update({ description: e.target.value })}
             className="border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
@@ -165,6 +314,8 @@ const TemplateModal: React.FC<{
   };
 
   const [schema, setSchema] = useState<any>(initSchema);
+  const [importJsonRaw, setImportJsonRaw] = useState('');
+  const [importError, setImportError] = useState<string | null>(null);
 
   const changeFormat = (f: OutputFormat) => {
     setFormat(f);
@@ -182,6 +333,45 @@ const TemplateModal: React.FC<{
   };
   const removeJsonField = (i: number) =>
     setSchema({ ...schema, fields: jsonFields.filter((_, idx) => idx !== i) });
+
+  const handleImportJson = () => {
+    setImportError(null);
+    const raw = importJsonRaw.trim();
+    if (!raw) {
+      setImportError(t('templates.importJsonEmpty') || 'Paste JSON or upload a file.');
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      const { fields } = jsonToTemplateSchema(parsed);
+      setSchema((prev: any) => ({ ...prev, fields }));
+      setImportJsonRaw('');
+      setImportError(null);
+    } catch (e) {
+      setImportError((e as Error).message || 'Invalid JSON');
+    }
+  };
+
+  const handleJsonFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setImportError(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const text = String(reader.result ?? '').trim();
+        const parsed = JSON.parse(text) as unknown;
+        const { fields } = jsonToTemplateSchema(parsed);
+        setSchema((prev: any) => ({ ...prev, fields }));
+        setImportJsonRaw('');
+        setImportError(null);
+      } catch (err) {
+        setImportError((err as Error).message || 'Invalid JSON file');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
 
   // Excel columns editor
   const excelColumns: ExcelColumn[] = schema.columns || [];
@@ -271,6 +461,48 @@ const TemplateModal: React.FC<{
 
             {format === 'json' && (
               <div className="space-y-3">
+                {/* Import from JSON */}
+                <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4 space-y-3">
+                  <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                    <FileJson className="w-4 h-4 text-purple-500" />
+                    {t('templates.importFromJson') || 'Chuyển từ JSON thành schema'}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <label className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-slate-300 rounded-lg text-sm text-slate-700 hover:bg-white cursor-pointer transition-colors">
+                      <Upload className="w-3.5 h-3.5" />
+                      <input
+                        type="file"
+                        accept=".json,application/json"
+                        onChange={handleJsonFileSelect}
+                        className="sr-only"
+                      />
+                      {t('templates.uploadJsonFile') || 'Chọn file JSON'}
+                    </label>
+                    <button
+                      type="button"
+                      title={t('templates.convertToSchema') || 'Chuyển thành schema'}
+                      onClick={handleImportJson}
+                      disabled={!importJsonRaw.trim()}
+                      className="px-3 py-1.5 border border-purple-300 rounded-lg text-sm text-purple-700 hover:bg-purple-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {t('templates.convertToSchema') || 'Chuyển thành schema'}
+                    </button>
+                  </div>
+                  <textarea
+                    value={importJsonRaw}
+                    onChange={(e) => { setImportJsonRaw(e.target.value); setImportError(null); }}
+                    placeholder='{"name": "John", "age": 30, "items": [{"id": 1}]}'
+                    rows={3}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                  />
+                  {importError && (
+                    <p className="text-xs text-red-600 flex items-center gap-1">
+                      <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                      {importError}
+                    </p>
+                  )}
+                </div>
+
                 <p className="text-xs text-slate-500">
                   {t('templates.schemaHint') || 'Use type "object" for nested fields (Add child), "array" for lists (Define item schema).'}
                 </p>

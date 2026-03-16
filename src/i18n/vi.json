@@ -83,6 +83,10 @@
       "excel": "Excel"
     },
     "schema": "Cấu trúc",
+    "importFromJson": "Chuyển từ JSON thành schema",
+    "uploadJsonFile": "Chọn file JSON",
+    "convertToSchema": "Chuyển thành schema",
+    "importJsonEmpty": "Dán JSON hoặc tải file lên.",
     "schemaHint": "Dùng kiểu \"object\" cho trường lồng nhau (Thêm trường con), \"array\" cho danh sách (Định nghĩa cấu trúc phần tử).",
     "fieldName": "Tên trường",
     "fieldDescription": "Mô tả",

@@ -83,6 +83,10 @@
       "excel": "Excel"
     },
     "schema": "Schema",
+    "importFromJson": "Import from JSON",
+    "uploadJsonFile": "Upload JSON file",
+    "convertToSchema": "Convert to schema",
+    "importJsonEmpty": "Paste JSON or upload a file.",
     "schemaHint": "Use type \"object\" for nested fields (Add child), \"array\" for lists (Define item schema).",
     "fieldName": "Field name",
     "fieldDescription": "Description",
