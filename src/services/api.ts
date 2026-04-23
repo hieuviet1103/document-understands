@@ -42,6 +42,8 @@ export const documentsApi = {
   list: (limit = 50, offset = 0) =>
     apiClient.get(`/api/v1/documents?limit=${limit}&offset=${offset}`),
   get: (id: string) => apiClient.get(`/api/v1/documents/${id}`),
+  getPreviewUrl: (id: string) =>
+    apiClient.get<{ url: string; filename: string; mime_type: string }>(`/api/v1/documents/${id}/preview-url`),
   delete: (id: string) => apiClient.delete(`/api/v1/documents/${id}`),
 };
 

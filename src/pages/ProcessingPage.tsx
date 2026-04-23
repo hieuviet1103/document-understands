@@ -22,6 +22,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
+import { DocumentPreviewModal } from '../components/DocumentPreviewModal';
 
 const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
   const { t } = useTranslation();
@@ -332,6 +333,7 @@ export const ProcessingPage: React.FC = () => {
   const queryClient = useQueryClient();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [viewResultJobId, setViewResultJobId] = useState<string | null>(null);
+  const [previewDocumentId, setPreviewDocumentId] = useState<string | null>(null);
   const [cancelJobId, setCancelJobId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -450,7 +452,17 @@ export const ProcessingPage: React.FC = () => {
                       {job.completed_at ? new Date(job.completed_at).toLocaleString() : '—'}
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex items-center gap-1 justify-end">
+                      <div className="flex items-center gap-1 justify-end flex-wrap">
+                        {job.document_id && (
+                          <button
+                            onClick={() => setPreviewDocumentId(job.document_id)}
+                            className="flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                            title={t('documents.preview') || 'Preview document'}
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            {t('documents.preview') || 'Preview'}
+                          </button>
+                        )}
                         {job.status === 'completed' && (
                           <button
                             onClick={() => setViewResultJobId(job.id)}
@@ -488,6 +500,18 @@ export const ProcessingPage: React.FC = () => {
                       <td colSpan={5} className="px-6 pb-4 bg-slate-50">
                         <div className="text-xs text-slate-600 space-y-1">
                           <p><span className="font-medium">Full ID:</span> {job.id}</p>
+                          {job.document_id && (
+                            <p>
+                              <span className="font-medium">Document:</span>{' '}
+                              <button
+                                type="button"
+                                onClick={() => setPreviewDocumentId(job.document_id)}
+                                className="text-blue-600 hover:underline"
+                              >
+                                {t('documents.preview') || 'Preview document'}
+                              </button>
+                            </p>
+                          )}
                           {job.custom_instructions && (
                             <p><span className="font-medium">Instructions:</span> {job.custom_instructions}</p>
                           )}
@@ -515,6 +539,13 @@ export const ProcessingPage: React.FC = () => {
 
       {viewResultJobId && (
         <ResultModal jobId={viewResultJobId} onClose={() => setViewResultJobId(null)} />
+      )}
+
+      {previewDocumentId && (
+        <DocumentPreviewModal
+          documentId={previewDocumentId}
+          onClose={() => setPreviewDocumentId(null)}
+        />
       )}
 
       {cancelJobId && (

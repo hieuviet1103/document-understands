@@ -20,6 +20,7 @@ RUN pip install --no-cache-dir --upgrade pip \
 FROM base AS final
 
 WORKDIR /app
+ENV PYTHONPATH=/app
 
 # Copy application code
 COPY app/ ./app/
@@ -31,4 +32,4 @@ USER appuser
 EXPOSE 8000
 
 # Default: API server. Override CMD for Celery worker.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

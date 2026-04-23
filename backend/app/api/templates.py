@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from app.core.auth import get_current_user
+from app.core.auth import get_current_user_or_api_key
 from app.core.supabase import get_supabase_admin_client
 from app.models.schemas import TemplateCreate, TemplateUpdate, TemplateResponse
 from typing import List, Dict, Any
@@ -10,7 +10,7 @@ router = APIRouter()
 @router.post("", response_model=TemplateResponse)
 async def create_template(
     template: TemplateCreate,
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user_or_api_key)
 ):
     user_id = current_user["user_id"]
     organization_id = current_user["profile"]["organization_id"]
@@ -32,7 +32,7 @@ async def create_template(
 async def list_templates(
     limit: int = 50,
     offset: int = 0,
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user_or_api_key)
 ):
     organization_id = current_user["profile"]["organization_id"]
     supabase = get_supabase_admin_client()
@@ -47,7 +47,7 @@ async def list_templates(
 @router.get("/{template_id}", response_model=TemplateResponse)
 async def get_template(
     template_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user_or_api_key)
 ):
     organization_id = current_user["profile"]["organization_id"]
     supabase = get_supabase_admin_client()
@@ -66,7 +66,7 @@ async def get_template(
 async def update_template(
     template_id: str,
     template: TemplateUpdate,
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user_or_api_key)
 ):
     user_id = current_user["user_id"]
     supabase = get_supabase_admin_client()
@@ -75,7 +75,7 @@ async def update_template(
         "id", template_id
     ).eq("user_id", user_id).maybe_single().execute()
 
-    if not existing.data:
+    if existing is None or not getattr(existing, "data", None):
         raise HTTPException(status_code=404, detail="Template not found")
 
     update_data = template.model_dump(exclude_unset=True, by_alias=True)
@@ -86,13 +86,15 @@ async def update_template(
         "id", template_id
     ).execute()
 
+    if response is None or not getattr(response, "data", None) or len(response.data) == 0:
+        raise HTTPException(status_code=500, detail="Template update failed")
     return response.data[0]
 
 
 @router.delete("/{template_id}")
 async def delete_template(
     template_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user_or_api_key)
 ):
     user_id = current_user["user_id"]
     supabase = get_supabase_admin_client()
@@ -101,7 +103,7 @@ async def delete_template(
         "id", template_id
     ).eq("user_id", user_id).maybe_single().execute()
 
-    if not existing.data:
+    if existing is None or not getattr(existing, "data", None):
         raise HTTPException(status_code=404, detail="Template not found")
 
     supabase.table("output_templates").delete().eq("id", template_id).execute()

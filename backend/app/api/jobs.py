@@ -1,7 +1,7 @@
 import json
 from fastapi import APIRouter, Depends, HTTPException
 from postgrest.exceptions import APIError as PostgrestAPIError
-from app.core.auth import get_current_user
+from app.core.auth import get_current_user_or_api_key
 from app.core.supabase import get_supabase_admin_client
 from app.services.processing import processing_service
 from app.models.schemas import ProcessingJobCreate, ProcessingJobResponse, ProcessingResultResponse
@@ -13,7 +13,7 @@ router = APIRouter()
 @router.post("", response_model=ProcessingJobResponse)
 async def create_job(
     job_data: ProcessingJobCreate,
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user_or_api_key)
 ):
     user_id = current_user["user_id"]
     organization_id = current_user["profile"]["organization_id"]
@@ -35,7 +35,7 @@ async def list_jobs(
     status: str = None,
     limit: int = 50,
     offset: int = 0,
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user_or_api_key)
 ):
     organization_id = current_user["profile"]["organization_id"]
     supabase = get_supabase_admin_client()
@@ -55,7 +55,7 @@ async def list_jobs(
 @router.get("/{job_id}", response_model=ProcessingJobResponse)
 async def get_job(
     job_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user_or_api_key)
 ):
     organization_id = current_user["profile"]["organization_id"]
     supabase = get_supabase_admin_client()
@@ -73,7 +73,7 @@ async def get_job(
 @router.get("/{job_id}/result", response_model=ProcessingResultResponse)
 async def get_job_result(
     job_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user_or_api_key)
 ):
     organization_id = current_user["profile"]["organization_id"]
     supabase = get_supabase_admin_client()
@@ -128,7 +128,7 @@ async def get_job_result(
 @router.post("/{job_id}/cancel")
 async def cancel_job(
     job_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user_or_api_key)
 ):
     user_id = current_user["user_id"]
 
@@ -146,7 +146,7 @@ async def cancel_job(
 @router.post("/{job_id}/retry", response_model=ProcessingJobResponse)
 async def retry_job(
     job_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user_or_api_key)
 ):
     user_id = current_user["user_id"]
     job = processing_service.retry_job(job_id, user_id)

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
-from app.core.auth import get_current_user
+from app.core.auth import get_current_user_or_api_key
 from app.core.supabase import get_supabase_admin_client
 from app.services.storage import storage_service
 from app.models.schemas import DocumentUploadResponse, DocumentResponse
@@ -11,7 +11,7 @@ router = APIRouter()
 @router.post("/upload", response_model=DocumentUploadResponse)
 async def upload_document(
     file: UploadFile = File(...),
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user_or_api_key)
 ):
     user_id = current_user["user_id"]
     organization_id = current_user["profile"]["organization_id"]
@@ -56,7 +56,7 @@ async def upload_document(
 async def list_documents(
     limit: int = 50,
     offset: int = 0,
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user_or_api_key)
 ):
     organization_id = current_user["profile"]["organization_id"]
     supabase = get_supabase_admin_client()
@@ -71,7 +71,7 @@ async def list_documents(
 @router.get("/{document_id}", response_model=DocumentResponse)
 async def get_document(
     document_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user_or_api_key)
 ):
     organization_id = current_user["profile"]["organization_id"]
     supabase = get_supabase_admin_client()
@@ -86,10 +86,39 @@ async def get_document(
     return response.data
 
 
+@router.get("/{document_id}/preview-url")
+async def get_document_preview_url(
+    document_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user_or_api_key)
+):
+    """Return a signed URL (and metadata) for previewing the document in the browser."""
+    organization_id = current_user["profile"]["organization_id"]
+    supabase = get_supabase_admin_client()
+
+    response = supabase.table("documents").select("*").eq(
+        "id", document_id
+    ).eq("organization_id", organization_id).maybe_single().execute()
+
+    if not response.data:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    doc = response.data
+    storage_path = doc.get("storage_path") or doc.get("file_path")
+    if not storage_path:
+        raise HTTPException(status_code=404, detail="Document file not found")
+
+    url = await storage_service.get_file_url(storage_path, expires_in=3600)
+    return {
+        "url": url,
+        "filename": doc.get("filename", ""),
+        "mime_type": doc.get("mime_type") or doc.get("file_type", "application/octet-stream"),
+    }
+
+
 @router.delete("/{document_id}")
 async def delete_document(
     document_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user_or_api_key)
 ):
     user_id = current_user["user_id"]
     supabase = get_supabase_admin_client()

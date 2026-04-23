@@ -11,7 +11,7 @@ services:
     container_name: doc_ai_redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "6279:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -25,17 +25,33 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    image: hieunv1103/document-ai-backend:latest
     container_name: doc_ai_backend
     restart: unless-stopped
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    # Dev: root avoids bind-mount permission issues on Docker Desktop (Windows)
+    user: "0:0"
+    # No --reload: uvicorn's reload spawns a child that often fails to import app.main
+    # in Docker (works with a single process). Edit code and restart: docker compose restart backend
+    working_dir: /app
+    # Mount whole backend so /app matches local layout and backend/.env is available; --loop asyncio avoids uvloop edge cases
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        export PYTHONPATH=/app
+        cd /app
+        python -c "import app.main"
+        exec python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --loop asyncio
     env_file:
       - .env.docker
     environment:
       REDIS_URL: redis://redis:6379/0
+      PYTHONPATH: /app
     ports:
-      - "8000:8000"
+      - "8010:8000"
     volumes:
-      - ./backend/app:/app/app   # hot-reload in dev
+      - ./backend:/app
     depends_on:
       redis:
         condition: service_healthy
@@ -51,15 +67,19 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    image: hieunv1103/document-ai-celery:latest
     container_name: doc_ai_celery
     restart: unless-stopped
+    user: "0:0"
+    working_dir: /app
     command: celery -A app.services.processing.celery_app worker --loglevel=info --concurrency=2
     env_file:
       - .env.docker
     environment:
       REDIS_URL: redis://redis:6379/0
+      PYTHONPATH: /app
     volumes:
-      - ./backend/app:/app/app   # hot-reload in dev
+      - ./backend:/app
     depends_on:
       redis:
         condition: service_healthy
@@ -68,7 +88,10 @@ services:
 
   # ── Frontend (Vite dev server) ────────────────────────────────────────────
   frontend:
-    image: node:20-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend.dev
+    image: hieunv1103/document-ai-frontend:latest
     container_name: doc_ai_frontend
     restart: unless-stopped
     working_dir: /app
@@ -91,8 +114,9 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    image: hieunv1103/document-ai-create-admin:latest
     env_file:
-      - .env.docker
+      - .env
     environment:
       REDIS_URL: redis://redis:6379/0
     volumes:

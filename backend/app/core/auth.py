@@ -10,6 +10,7 @@ import httpx
 
 
 security = HTTPBearer()
+security_optional = HTTPBearer(auto_error=False)
 
 # Default org used when auto-creating profile (must match create_admin.py)
 DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001"
@@ -141,6 +142,38 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Authentication failed: {str(e)}",
         )
+
+
+async def get_current_user_or_api_key(
+    x_api_key: Optional[str] = Header(None, alias="X-Api-Key"),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False)),
+) -> Dict[str, Any]:
+    """
+    Accept either API key (header X-Api-Key) or JWT (Authorization: Bearer).
+    Use this so the same /api/v1/* routes work with both session and API key.
+    """
+    if x_api_key:
+        api_key_user = await get_api_key_user(x_api_key=x_api_key)
+        supabase = get_supabase_admin_client()
+        profile_r = supabase.table("user_profiles").select("*").eq("id", api_key_user["user_id"]).maybe_single().execute()
+        profile_data = getattr(profile_r, "data", None)
+        if isinstance(profile_data, list) and profile_data:
+            profile = profile_data[0] if isinstance(profile_data[0], dict) else {"organization_id": api_key_user["organization_id"], "role": "user"}
+        elif isinstance(profile_data, dict):
+            profile = profile_data
+        else:
+            profile = {"id": api_key_user["user_id"], "organization_id": api_key_user["organization_id"], "role": "user"}
+        return {
+            "user_id": api_key_user["user_id"],
+            "email": "",
+            "profile": profile,
+        }
+    if credentials:
+        return await get_current_user(credentials)
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or expired token. Use Authorization: Bearer <session_token> or X-Api-Key: <api_key>.",
+    )
 
 
 def require_role(required_roles: list[UserRole]):

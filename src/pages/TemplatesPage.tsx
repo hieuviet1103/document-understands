@@ -392,17 +392,18 @@ const TemplateModal: React.FC<{
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl my-4">
-        <div className="flex items-center justify-between p-6 border-b border-slate-200">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl my-4 flex flex-col max-h-[calc(100vh-2rem)]">
+        <div className="flex items-center justify-between p-6 border-b border-slate-200 flex-shrink-0">
           <h2 className="text-xl font-semibold text-slate-900">
             {template ? t('common.edit') : t('templates.createTemplate')}
           </h2>
-          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg transition-colors" type="button">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+          <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-5">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">{t('templates.templateName')}</label>
             <input
@@ -558,33 +559,36 @@ const TemplateModal: React.FC<{
             )}
           </div>
 
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setIsPublic(!isPublic)}
-              className={`relative w-10 h-6 rounded-full transition-colors ${isPublic ? 'bg-blue-500' : 'bg-slate-300'}`}
-            >
-              <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${isPublic ? 'translate-x-4' : ''}`} />
-            </button>
-            <label className="text-sm text-slate-700">{t('templates.isPublic')}</label>
-            {isPublic ? <Globe className="w-4 h-4 text-blue-500" /> : <Lock className="w-4 h-4 text-slate-400" />}
           </div>
 
-          <div className="flex gap-3 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 py-2 border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 transition-colors"
-            >
-              {t('common.cancel')}
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
-            >
-              {loading ? t('common.loading') : t('templates.saveTemplate')}
-            </button>
+          <div className="flex-shrink-0 border-t border-slate-200 p-6 space-y-4 bg-slate-50/50 rounded-b-xl">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setIsPublic(!isPublic)}
+                className={`relative w-10 h-6 rounded-full transition-colors ${isPublic ? 'bg-blue-500' : 'bg-slate-300'}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${isPublic ? 'translate-x-4' : ''}`} />
+              </button>
+              <label className="text-sm text-slate-700">{t('templates.isPublic')}</label>
+              {isPublic ? <Globe className="w-4 h-4 text-blue-500" /> : <Lock className="w-4 h-4 text-slate-400" />}
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 py-2 border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
+              >
+                {loading ? t('common.loading') : t('templates.saveTemplate')}
+              </button>
+            </div>
           </div>
         </form>
       </div>

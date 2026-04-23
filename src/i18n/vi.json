@@ -65,6 +65,7 @@
     "uploadDate": "Ngày tải lên",
     "status": "Trạng thái",
     "actions": "Thao tác",
+    "preview": "Xem trước",
     "deleteConfirm": "Bạn có chắc chắn muốn xóa tài liệu này?",
     "uploadSuccess": "Tải lên tài liệu thành công",
     "goToProcessing": "Vào Xử lý để chọn tài liệu + mẫu trích xuất →",

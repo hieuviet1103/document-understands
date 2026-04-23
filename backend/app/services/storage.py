@@ -5,8 +5,21 @@ from typing import Optional, Tuple
 import uuid
 import os
 from io import BytesIO
+import logging
+
+import httpx
 from PIL import Image
-from PyPDF2 import PdfReader
+from pypdf import PdfReader
+
+
+logger = logging.getLogger(__name__)
+
+WORD_MIMES = frozenset(
+    {
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/msword",
+    }
+)
 
 
 class StorageService:
@@ -45,27 +58,56 @@ class StorageService:
                 detail=f"File type {file.content_type} not allowed"
             )
 
+        original_content_type = file.content_type or ""
         file_ext = os.path.splitext(file.filename)[1]
         file_id = str(uuid.uuid4())
-        storage_path = f"{organization_id}/{user_id}/{file_id}{file_ext}"
+        storage_ext = file_ext
+        effective_content_type = original_content_type
 
         try:
             file_content = await file.read()
 
+            # If configured, convert supported Word documents to PDF via Stirling-PDF
+            if (
+                settings.STIRLING_PDF_BASE_URL
+                and original_content_type in WORD_MIMES
+            ):
+                logger.info(
+                    "[storage] Converting Word to PDF via Stirling-PDF "
+                    "filename=%s mime=%s size_bytes=%s",
+                    file.filename,
+                    original_content_type,
+                    len(file_content),
+                )
+                pdf_bytes = await self._convert_word_to_pdf_via_stirling(
+                    file_content=file_content,
+                    filename=file.filename,
+                    content_type=original_content_type,
+                )
+                file_content = pdf_bytes
+                effective_content_type = "application/pdf"
+                storage_ext = ".pdf"
+
+            storage_path = f"{organization_id}/{user_id}/{file_id}{storage_ext}"
+
             self.supabase.storage.from_(self.bucket_name).upload(
                 storage_path,
                 file_content,
-                file_options={"content-type": file.content_type}
+                file_options={"content-type": effective_content_type}
             )
 
             thumbnail_url = None
-            if file.content_type.startswith("image/"):
-                thumbnail_url = await self._generate_thumbnail(
+            if effective_content_type.startswith("image/"):
+                # thumbnail_url = await self._generate_thumbnail(
+                #     file_content,
+                #     effective_content_type,
+                #     storage_path
+                # )
+                thumbnail_url = await self._generate_pdf_thumbnail(
                     file_content,
-                    file.content_type,
                     storage_path
                 )
-            elif file.content_type == "application/pdf":
+            elif effective_content_type == "application/pdf":
                 thumbnail_url = await self._generate_pdf_thumbnail(
                     file_content,
                     storage_path
@@ -215,6 +257,64 @@ class StorageService:
             print(f"Metadata extraction failed: {str(e)}")
 
         return metadata
+
+    async def _convert_word_to_pdf_via_stirling(
+        self,
+        file_content: bytes,
+        filename: str,
+        content_type: str,
+    ) -> bytes:
+        """
+        Convert a Word document to PDF using Stirling-PDF (LibreOffice backend).
+        Expects STIRLING_PDF_BASE_URL to be configured, e.g. http://108.108.1.4:5680.
+        """
+        base_url = settings.STIRLING_PDF_BASE_URL
+        if not base_url:
+            raise HTTPException(
+                status_code=500,
+                detail="STIRLING_PDF_BASE_URL is not configured for Word → PDF conversion"
+            )
+
+        url = base_url.rstrip("/") + "/api/v1/convert/file/pdf"
+        logger.info(
+            "[storage] Calling Stirling-PDF url=%s filename=%s mime=%s size_bytes=%s",
+            url,
+            filename,
+            content_type,
+            len(file_content),
+        )
+
+        try:
+            async with httpx.AsyncClient(timeout=120) as client:
+                response = await client.post(
+                    url,
+                    # Stirling-PDF expects the field name to be `fileInput`
+                    files={"fileInput": (filename, file_content, content_type)},
+                )
+        except Exception as e:
+            logger.exception("[storage] Error calling Stirling-PDF: %s", e)
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to reach Stirling-PDF service: {str(e)}"
+            )
+
+        if response.status_code != 200:
+            logger.error(
+                "[storage] Stirling-PDF conversion failed status=%s body=%s",
+                response.status_code,
+                response.text[:500],
+            )
+            raise HTTPException(
+                status_code=500,
+                detail=f"Stirling-PDF conversion failed ({response.status_code}): {response.text[:300]}"
+            )
+
+        logger.info(
+            "[storage] Stirling-PDF conversion success filename=%s output_size_bytes=%s",
+            filename,
+            len(response.content),
+        )
+        return response.content
 
 
 storage_service = StorageService()

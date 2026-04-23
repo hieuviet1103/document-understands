@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import List
+from typing import List, Optional
 
 
 class Settings(BaseSettings):
@@ -25,12 +25,15 @@ class Settings(BaseSettings):
     EXTERNAL_API_PREFIX: str = "/external/v1"
     SECRET_KEY: str
 
-    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:5174,http://localhost:3000"
 
     MAX_UPLOAD_SIZE: int = 52428800
     ALLOWED_FILE_TYPES: str = "application/pdf,image/png,image/jpeg,image/jpg,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation"
 
     STORAGE_BUCKET_NAME: str = "documents"
+    # Base URL for Stirling-PDF (e.g. http://108.108.1.4:5680). Optional; when set,
+    # Word documents will be converted to PDF via /api/v1/convert/file/pdf before upload.
+    STIRLING_PDF_BASE_URL: Optional[str] = None
 
     @property
     def cors_origins_list(self) -> List[str]:

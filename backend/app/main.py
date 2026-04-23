@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from app.core.config import settings
 from app.api import documents, templates, jobs, api_keys, webhooks, external
 
@@ -8,6 +9,37 @@ app = FastAPI(
     description="Intelligent document processing with Google Gemini API",
     version="1.0.0"
 )
+
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    # Support both JWT (Bearer) and API Key in Swagger
+    openapi_schema["components"]["securitySchemes"] = {
+        "Bearer": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT", "description": "JWT from login (Supabase session)"},
+        "ApiKey": {"type": "apiKey", "in": "header", "name": "X-Api-Key", "description": "API key (alternative to Bearer)"},
+    }
+    # Routes that accept EITHER Bearer OR X-Api-Key
+    either_auth_paths = ("/api/v1/documents", "/api/v1/templates", "/api/v1/jobs")
+    for path, path_item in (openapi_schema.get("paths") or {}).items():
+        if not path.startswith(either_auth_paths):
+            continue
+        for method in ("get", "post", "put", "patch", "delete"):
+            op = path_item.get(method)
+            if not op:
+                continue
+            op["security"] = [{"Bearer": []}, {"ApiKey": []}]
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
 
 app.add_middleware(
     CORSMiddleware,

@@ -17,7 +17,9 @@ import {
   Clock,
   XCircle,
   X,
+  Eye,
 } from 'lucide-react';
+import { DocumentPreviewModal } from '../components/DocumentPreviewModal';
 
 const formatBytes = (bytes: number) => {
   if (bytes === 0) return '0 B';
@@ -60,6 +62,7 @@ export const DocumentsPage: React.FC = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [search, setSearch] = useState('');
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [previewDocumentId, setPreviewDocumentId] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState(false);
 
@@ -216,13 +219,22 @@ export const DocumentsPage: React.FC = () => {
                     {new Date(doc.created_at).toLocaleDateString()}
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <button
-                      onClick={() => setDeleteId(doc.id)}
-                      className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                      title={t('common.delete')}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        onClick={() => setPreviewDocumentId(doc.id)}
+                        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title={t('documents.preview') || 'Preview'}
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => setDeleteId(doc.id)}
+                        className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        title={t('common.delete')}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -230,6 +242,13 @@ export const DocumentsPage: React.FC = () => {
           </table>
         )}
       </div>
+
+      {previewDocumentId && (
+        <DocumentPreviewModal
+          documentId={previewDocumentId}
+          onClose={() => setPreviewDocumentId(null)}
+        />
+      )}
 
       {/* Delete confirm modal */}
       {deleteId && (
