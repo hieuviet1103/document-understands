@@ -1,3 +1,3 @@
-# Dev: Node only — source mounted from host; entrypoint runs npm ci + vite dev
+# Dev: Node only — source mounted from host; compose runs npm ci (or npm install) + vite dev
 FROM node:20-alpine
 WORKDIR /app

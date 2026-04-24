@@ -1,0 +1,47 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# .env.docker — shared environment for Docker Compose
+# Copy this file and fill in your values.
+# DO NOT commit the filled-in version to git.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Supabase ──────────────────────────────────────────────────────────────────
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+
+# ── Google Gemini ─────────────────────────────────────────────────────────────
+GEMINI_API_KEY=your_gemini_api_key
+
+# ── Security ──────────────────────────────────────────────────────────────────
+# Generate a strong random secret: openssl rand -hex 32
+SECRET_KEY=change_this_to_a_random_secret_at_least_32_chars
+
+# ── Redis (prod: override REDIS_URL in compose with password) ─────────────────
+REDIS_URL=redis://redis:6379/0
+REDIS_PASSWORD=changeme_in_production
+
+# ── CORS (comma-separated origins) ───────────────────────────────────────────
+# Dev: include localhost ports
+# Prod: your actual domain
+CORS_ORIGINS=http://localhost:5173,http://localhost:5174,http://localhost:3000,http://localhost:80
+
+# ── API Config ────────────────────────────────────────────────────────────────
+API_V1_PREFIX=/api/v1
+EXTERNAL_API_PREFIX=/external/v1
+
+# ── File Upload ───────────────────────────────────────────────────────────────
+MAX_UPLOAD_SIZE=52428800
+ALLOWED_FILE_TYPES=application/pdf,image/png,image/jpeg,image/jpg,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation
+
+# ── Supabase Storage ──────────────────────────────────────────────────────────
+STORAGE_BUCKET_NAME=documents
+
+# ── Frontend (used by Vite at build time in prod) ────────────────────────────
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+# In prod leave empty — nginx proxies /api on the same origin
+# In dev set to http://localhost:8000
+VITE_API_BASE_URL=http://localhost:8000
+
+# ── Deployment ────────────────────────────────────────────────────────────────
+APP_VERSION=latest

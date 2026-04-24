@@ -41,6 +41,7 @@ services:
         set -e
         export PYTHONPATH=/app
         cd /app
+        pip install --no-cache-dir -q -r requirements.txt
         python -c "import app.main"
         exec python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --loop asyncio
     env_file:
@@ -72,7 +73,14 @@ services:
     restart: unless-stopped
     user: "0:0"
     working_dir: /app
-    command: celery -A app.services.processing.celery_app worker --loglevel=info --concurrency=2
+    # Bind-mount overwrites /app but not site-packages; install deps from host requirements on start.
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        pip install --no-cache-dir -q -r requirements.txt
+        exec celery -A app.services.processing.celery_app worker --loglevel=info --concurrency=2
     env_file:
       - .env.docker
     environment:
@@ -95,16 +103,23 @@ services:
     container_name: doc_ai_frontend
     restart: unless-stopped
     working_dir: /app
-    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0 --port 5173"
+    # npm ci needs package-lock.json; servers often deploy without it — fall back to npm install
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        if [ -f package-lock.json ]; then npm ci; else echo "package-lock.json missing; running npm install" >&2; npm install; fi
+        exec npm run dev -- --host 0.0.0.0 --port 5173
     env_file:
       - .env.docker
     ports:
-      - "5173:5173"
+      - "5174:5173"
     volumes:
       - .:/app
       - /app/node_modules   # anonymous volume keeps container node_modules separate
     environment:
-      VITE_API_BASE_URL: http://localhost:8000
+      VITE_API_BASE_URL: http://108.108.1.4:8200
 
   # ── One-off: create SA admin user ────────────────────────────────────────
   # Run: docker compose run --rm create_admin
